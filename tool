@@ -2,8 +2,6 @@ local Players = game:GetService('Players')
 local UserInputService = game:GetService('UserInputService')
 local RunService = game:GetService('RunService')
 local Workspace = game:GetService('Workspace')
-local ProximityPromptService = game:GetService('ProximityPromptService')
-local VirtualUser = game:GetService('VirtualUser')
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild('PlayerGui')
@@ -15,8 +13,8 @@ screenGui.ResetOnSpawn = false
 
 local mainFrame = Instance.new('Frame', screenGui)
 mainFrame.Name = 'MainFrame'
-mainFrame.Size = UDim2.new(0, 200, 0, 245)
-mainFrame.Position = UDim2.new(0, 10, 1, -255)
+mainFrame.Size = UDim2.new(0, 200, 0, 210)
+mainFrame.Position = UDim2.new(0, 10, 1, -220)
 mainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 mainFrame.BorderSizePixel = 0
 Instance.new('UICorner', mainFrame).CornerRadius = UDim.new(0, 10)
@@ -92,11 +90,10 @@ end
 ---------------------------------------------------------
 -- 🎛 Buttons
 ---------------------------------------------------------
-local btnClearAvatar = makeButton('ClearAvatarBtn', 'Xóa Avatar (Tất cả)', Color3.fromRGB(220, 50, 50), 40)
+local btnClearAvatar = makeButton('ClearAvatarBtn', 'Xóa Avatar (Tất cả) (G)', Color3.fromRGB(220, 50, 50), 40)
 local btnSpamSlap   = makeButton('SpamSlapBtn', 'Spam Slap: OFF (R)', Color3.fromRGB(50, 150, 220), 80)
 local btnXRay       = makeButton('XRayBtn', 'X-Ray Plots: OFF', Color3.fromRGB(150, 50, 220), 120)
-local btnLift       = makeButton('LiftBtn', 'Bệ Nâng: OFF (C)', Color3.fromRGB(255, 140, 0), 160)
-local btnAutoHold   = makeButton('AutoHoldBtn', 'Auto-Hold Steal: OFF (T)', Color3.fromRGB(255, 200, 50), 200)
+local btnLift       = makeButton('LiftBtn', 'Bệ Nâng: OFF (X)', Color3.fromRGB(255, 140, 0), 160)
 
 ---------------------------------------------------------
 -- 🔽 Toggle rút gọn / mở rộng menu
@@ -110,7 +107,7 @@ local function toggleCollapse()
 	else
 		title.Text = "Mini Menu ▼"
 		for _, b in ipairs(buttons) do b.Visible = true end
-		mainFrame:TweenSize(UDim2.new(0, 200, 0, 245), "Out", "Quad", 0.25, true)
+		mainFrame:TweenSize(UDim2.new(0, 200, 0, 210), "Out", "Quad", 0.25, true)
 	end
 end
 title.MouseButton1Click:Connect(function()
@@ -121,153 +118,6 @@ end)
 local isSpamming = false
 local xrayEnabled = false
 local liftEnabled = false
-local AUTO_HOLD_ENABLED = true                                       -- mặc định OFF
-
----------------------------------------------------------
--- ======================= AUTO HOLD E (FIX+) ==================
----------------------------------------------------------
-local HOLD_CHECK_DELAY = 0.02
-local MAX_HOLD_TIME = 1.65
-
-local VirtualUser = game:GetService("VirtualUser")
-local ProximityPromptService = game:GetService("ProximityPromptService")
-
-AUTO_HOLD_ENABLED = AUTO_HOLD_ENABLED or false
-local currentHoldingPrompt = nil
-local holdingThread = nil
-
----------------------------------------------------------
--- ✅ Kiểm tra prompt có phải steal
----------------------------------------------------------
-local function isStealPrompt(prompt)
-	if not prompt then return false end
-	local a = tostring(prompt.ActionText or ""):lower()
-	local o = tostring(prompt.ObjectText or ""):lower()
-	local n = tostring(prompt.Name or ""):lower()
-	return a:find("steal") or o:find("steal") or n:find("steal")
-end
-
----------------------------------------------------------
--- 🧩 Giải phóng phím E
----------------------------------------------------------
-local function release_virtualuser()
-	pcall(function()
-		VirtualUser:SendKeyEvent(false, Enum.KeyCode.E, false, game)
-	end)
-end
-
----------------------------------------------------------
--- 🧩 Dừng hold an toàn
----------------------------------------------------------
-local function safe_end_hold(prompt, usedAPI, usedVirtual)
-	pcall(function()
-		if usedAPI and prompt and prompt.Parent then
-			prompt:InputHoldEnd()
-		end
-	end)
-	if usedVirtual then
-		release_virtualuser()
-	end
-end
-
----------------------------------------------------------
--- 🧠 Dừng mọi thread đang chạy
----------------------------------------------------------
-local function stopCurrentHold()
-	if holdingThread and coroutine.status(holdingThread) ~= "dead" then
-		coroutine.close(holdingThread)
-	end
-	if currentHoldingPrompt then
-		safe_end_hold(currentHoldingPrompt, true, true)
-		currentHoldingPrompt = nil
-	end
-	release_virtualuser()
-end
-
----------------------------------------------------------
--- ⚡ Giữ E đến khi prompt biến mất hoặc hết thời gian
----------------------------------------------------------
-local function holdPromptUntilDone(prompt)
-	-- Ngắt prompt cũ (nếu đang giữ)
-	stopCurrentHold()
-
-	currentHoldingPrompt = prompt
-	holdingThread = coroutine.create(function()
-		if not AUTO_HOLD_ENABLED or not prompt or not prompt.Parent then return end
-		if not isStealPrompt(prompt) then return end
-
-		local usedAPI, usedVirtual = false, false
-		local success = pcall(function()
-			if typeof(prompt.InputHoldBegin) == "function" then
-				usedAPI = true
-				prompt:InputHoldBegin()
-			else
-				usedVirtual = true
-				VirtualUser:CaptureController()
-				VirtualUser:SendKeyEvent(true, Enum.KeyCode.E, false, game)
-			end
-		end)
-
-		if not success then
-			pcall(function()
-				if fireproximityprompt then
-					while AUTO_HOLD_ENABLED and prompt and prompt.Enabled and prompt.Parent do
-						fireproximityprompt(prompt)
-						task.wait(0.05)
-					end
-				end
-			end)
-			return
-		end
-
-		local start = os.clock()
-		while AUTO_HOLD_ENABLED and prompt and prompt.Parent and prompt.Enabled and (os.clock() - start < MAX_HOLD_TIME) do
-			task.wait(HOLD_CHECK_DELAY)
-		end
-
-		safe_end_hold(prompt, usedAPI, usedVirtual)
-		currentHoldingPrompt = nil
-		task.delay(0.2, release_virtualuser)
-	end)
-	coroutine.resume(holdingThread)
-end
-
----------------------------------------------------------
--- 📡 Khi prompt xuất hiện
----------------------------------------------------------
-ProximityPromptService.PromptShown:Connect(function(prompt)
-	if AUTO_HOLD_ENABLED and isStealPrompt(prompt) then
-		holdPromptUntilDone(prompt)
-	end
-end)
-
----------------------------------------------------------
--- 🚨 Khi prompt bị xoá
----------------------------------------------------------
-workspace.DescendantRemoving:Connect(function(v)
-	if v:IsA("ProximityPrompt") and v == currentHoldingPrompt then
-		stopCurrentHold()
-	end
-end)
-
----------------------------------------------------------
--- 🔘 Toggle Auto Hold
----------------------------------------------------------
-local function toggleAutoHold()
-	AUTO_HOLD_ENABLED = not AUTO_HOLD_ENABLED
-	if AUTO_HOLD_ENABLED then
-		btnAutoHold.Text = "Auto-Hold Steal: ON (T)"
-		btnAutoHold.BackgroundColor3 = Color3.fromRGB(100, 220, 100)
-		print("🟢 Auto-Hold Steal: ON")
-	else
-		btnAutoHold.Text = "Auto-Hold Steal: OFF (T)"
-		btnAutoHold.BackgroundColor3 = Color3.fromRGB(255, 200, 50)
-		stopCurrentHold()
-		print("🔴 Auto-Hold Steal: OFF")
-	end
-end
-
-
 
 ---------------------------------------------------------
 -- ======================= CLEAR OUTFIT =================
@@ -535,7 +385,6 @@ end)
 
 btnXRay.MouseButton1Click:Connect(toggleXray)
 btnLift.MouseButton1Click:Connect(toggleLift)
-btnAutoHold.MouseButton1Click:Connect(toggleAutoHold)
 
 ---------------------------------------------------------
 -- ======================= HOTKEYS ======================
@@ -554,5 +403,10 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		end
 	elseif input.KeyCode == Enum.KeyCode.X then
 		toggleLift()
+	elseif input.KeyCode == Enum.KeyCode.G then
+		clearAllAvatars()
+		btnClearAvatar.BackgroundColor3 = Color3.fromRGB(100, 220, 100)
+		task.wait(0.2)
+		btnClearAvatar.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
 	end
 end)
